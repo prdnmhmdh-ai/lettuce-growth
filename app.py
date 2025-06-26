@@ -23,7 +23,7 @@ def index():
 
 @app.route("/detect", methods=["GET"])
 def detect_page():
-    return render_template("detect.html")
+    return render_template("detect/detect.html")
 
 @app.route('/detect', methods=['POST'])
 def detect():
