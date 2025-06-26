@@ -21,9 +21,13 @@ if not os.path.exists(app.config['UPLOAD_FOLDER']):
 def index():
     return send_from_directory(os.getcwd(), "index.html")
 
-@app.route('/detect', methods=['GET', 'POST'])
+@app.route("/detect", methods=["GET"])
+def detect_page():
+    return render_template("detect.html")
+
+@app.route('/detect', methods=['POST'])
 def detect():
-    if request.method == 'POST':
+    try:
         data = request.get_json()
         if 'camera_image' in data:
             data_url = data['camera_image']
@@ -39,16 +43,17 @@ def detect():
             image_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
             file.save(image_path)
 
-        # Menggunakan model untuk mendapatkan hasil inferensi
+        else:
+            return jsonify({"reply": "❌ No image provided"}), 400
+
         result = CLIENT.infer(image_path, model_id="aquaponic_polygan_test/2")
 
-        # Menampilkan respons penuh untuk inspeksi
         print("Full model response:", result)
 
-        # Mengembalikan hasil dalam format JSON
         return jsonify(result)
 
-    return render_template('detect.html')
+    except Exception as e:
+        return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
