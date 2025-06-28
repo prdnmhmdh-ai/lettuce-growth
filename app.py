@@ -24,13 +24,9 @@ for folder in [app.config['UPLOAD_FOLDER'], app.config['RESULT_FOLDER']]:
     if not os.path.exists(folder):
         os.makedirs(folder)
 
-# @app.route("/")
-# def index():
-#     return send_from_directory(os.getcwd(), "index.html")
-
 @app.route("/")
-def detect_page():
-    return render_template("detect/detect.html")
+def index():
+    return send_from_directory(os.getcwd(), "index.html")
 
 @app.route('/static/results/<path:filename>')
 def serve_result_image(filename):
