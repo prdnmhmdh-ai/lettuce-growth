@@ -102,9 +102,22 @@
         </div>
     </div>
 
-    <div id="detectionResult" class="mt-5" style="display:none;">
-        <h4>Detection Result</h4>
-        <pre id="jsonResult"></pre>
+    <div id="detectionResult" class="mt-5" style="display: none;">
+      <h4 class="text-center">Detection Result</h4>
+      <div class="row mt-3">
+        <!-- Kolom kiri: Gambar hasil -->
+        <div class="col-md-7 text-center">
+          <img id="annotatedImage" src="" style="max-width: 100%; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); display: none;" alt="Detection Result Image">
+        </div>
+        
+        <!-- Kolom kanan: Hasil JSON -->
+        <div class="col-md-5">
+          <div class="card shadow-sm border-0 p-3">
+            <h6 class="mb-2 font-weight-bold">Prediction Details</h6>
+            <pre id="jsonResult" style="font-size: 0.85rem; background: #f8f9fa; padding: 10px; border-radius: 6px; height: 400px; overflow-y: auto;"></pre>
+          </div>
+        </div>
+      </div>
     </div>
 </div>
 
@@ -387,8 +400,14 @@
                 })
                 .then(response => response.json())
                 .then(result => {
-                    jsonResult.textContent = JSON.stringify(result, null, 2);
+                    jsonResult.textContent = JSON.stringify(result.predictions, null, 2);
                     detectionResult.style.display = "block";
+
+                    if (result.annotated_image) {
+                        const img = document.getElementById("annotatedImage");
+                        img.src = result.annotated_image;
+                        img.style.display = "block";
+                    }
                 })
                 .catch(error => console.error(error));
             };

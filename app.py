@@ -4,9 +4,15 @@ from flask import Flask, send_from_directory, render_template, request, jsonify
 from inference_sdk import InferenceHTTPClient
 from PIL import Image
 from io import BytesIO
+from roboflow import Roboflow
+import supervision as sv
+import cv2
+import traceback
+import numpy as np
 
 app = Flask(__name__, static_folder='assets')
 app.config['UPLOAD_FOLDER'] = 'static/uploads'
+app.config['RESULT_FOLDER'] = 'static/results'
 app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
 CLIENT = InferenceHTTPClient(
@@ -14,12 +20,21 @@ CLIENT = InferenceHTTPClient(
     api_key="zHXvPR4wY6HIpFlHqkFg"
 )
 
-if not os.path.exists(app.config['UPLOAD_FOLDER']):
-    os.makedirs(app.config['UPLOAD_FOLDER'])
+for folder in [app.config['UPLOAD_FOLDER'], app.config['RESULT_FOLDER']]:
+    if not os.path.exists(folder):
+        os.makedirs(folder)
 
 @app.route("/")
 def index():
     return send_from_directory(os.getcwd(), "index.html")
+
+@app.route('/static/results/<path:filename>')
+def serve_result_image(filename):
+    return send_from_directory('static/results', filename)
+
+@app.route('/static/uploads/<path:filename>')
+def serve_upload_image(filename):
+    return send_from_directory('static/uploads', filename)
 
 @app.route("/detect", methods=["GET"])
 def detect_page():
@@ -28,6 +43,7 @@ def detect_page():
 @app.route('/detect', methods=['POST'])
 def detect():
     try:
+        # Terima gambar dari kamera atau upload
         data = request.get_json()
         if 'camera_image' in data:
             data_url = data['camera_image']
@@ -46,13 +62,79 @@ def detect():
         else:
             return jsonify({"reply": "❌ No image provided"}), 400
 
-        result = CLIENT.infer(image_path, model_id="aquaponic_polygan_test/2")
+        print("📦 Loading Roboflow...")
+        rf = Roboflow(api_key="zHXvPR4wY6HIpFlHqkFg")
+        project = rf.workspace().project("aquaponic_polygan_test")
+        model = project.version(2).model
 
-        print("Full model response:", result)
+        print("🔍 Predicting...")
+        result_json = model.predict(image_path, confidence=40).json()
+        preds = result_json["predictions"]
 
-        return jsonify(result)
+        if not preds:
+            return jsonify({
+                "predictions": [],
+                "annotated_image": None,
+                "reply": "✅ Tidak ada objek yang terdeteksi."
+            })
+
+        # Konversi prediksi ke objek Detections
+        xyxy = np.array([
+            [pred["x"] - pred["width"] / 2,
+             pred["y"] - pred["height"] / 2,
+             pred["x"] + pred["width"] / 2,
+             pred["y"] + pred["height"] / 2]
+            for pred in preds
+        ])
+        class_id = np.array([pred.get("class_id", 0) for pred in preds])
+        confidence = np.array([pred["confidence"] for pred in preds])
+        class_name = [pred["class"] for pred in preds]
+
+        detections = sv.Detections(
+            xyxy=xyxy,
+            class_id=class_id,
+            confidence=confidence,
+            data={"class_name": class_name}
+        )
+
+         # Tambahkan label ke data
+        detections.data["class_name"] = [f"{c} ({conf:.2f})" for c, conf in zip(class_name, confidence)]
+
+        # Baca gambar dan anotasi
+        image_cv2 = cv2.imread(image_path)
+        box_annotator = sv.BoxAnnotator(thickness=4)
+
+        label_annotator = sv.LabelAnnotator()
+
+        labels = [f"{c} ({conf:.2f})" for c, conf in zip(class_name, confidence)]
+
+        image_with_box = box_annotator.annotate(
+            scene=image_cv2,
+            detections=detections
+        )
+
+        annotated_image = label_annotator.annotate(
+            scene=image_with_box,
+            detections=detections,
+            labels=labels
+        )
+
+        # Simpan hasil
+        output_filename = "annotated_" + os.path.basename(image_path)
+        output_path = os.path.join(app.config['RESULT_FOLDER'], output_filename)
+        success = cv2.imwrite(output_path, annotated_image)
+
+        if not success:
+            return jsonify({"reply": "❌ Gagal menyimpan hasil gambar."}), 500
+
+        # Kirim URL hasil ke frontend
+        return jsonify({
+            "predictions": preds,
+            "annotated_image": f"/static/results/{output_filename}"
+        })
 
     except Exception as e:
+        traceback.print_exc()
         return jsonify({"reply": f"❌ Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
