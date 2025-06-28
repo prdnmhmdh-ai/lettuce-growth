@@ -6,7 +6,7 @@
     },
     {
       "src": "/detect",
-      "dest": "/"
+      "dest": "/detect"
     }
   ]
 }
